@@ -450,6 +450,32 @@ model <- flexsurvreg(
   dist = "gompertz"
 )
 summary(model)
+library(lavaan)
+
+# SEM
+model <- '
+  # A: sugar rationing -> mediators
+  diabetes ~ a1 * ration_group + age + sex + income + parental_lung_disease
+  hypertension ~ a2 * ration_group + age + sex + income + parental_lung_disease
+  birthweight ~ a3 * ration_group + age + sex + income + parental_lung_disease
+
+  # B: mediators -> outcome
+  lung_disease ~ b1 * diabetes + b2 * hypertension + b3 * birthweight + c_prime * ration_group + age + sex + income + parental_lung_disease
+
+  # 
+  ind_diabetes := a1 * b1
+  ind_hypertension := a2 * b2
+  ind_birthweight := a3 * b3
+  total_indirect := ind_diabetes + ind_hypertension + ind_birthweight
+  total_effect := c_prime + total_indirect
+'
+
+# SEM
+fit <- sem(model, data = df, se = "bootstrap", bootstrap = 1000)  # bootstrap可获得置信区间
+# 
+summary(fit, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+# 
+parameterEstimates(fit, standardized = TRUE)
 
 ####################################################north_coordinate
 data <- data %>%
