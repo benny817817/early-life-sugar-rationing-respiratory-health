@@ -1,0 +1,246 @@
+####Date of birth
+data$year_birth=data$p34
+data$month_birth=data$p52.x
+
+library(dplyr)
+
+#
+data$birth_group <- NA  #
+
+data$birth_group <- ifelse(
+  (data$year_birth == 1951 & data$month_birth %in% c("October", "November", "December")) | 
+    (data$year_birth == 1952 & data$month_birth %in% c("January", "February", "March")),
+  1,
+  data$birth_group
+)
+
+data$birth_group <- ifelse(
+  (data$year_birth == 1952 & data$month_birth %in% c("April", "May", "June", "July", "August", "September")),
+  2,
+  data$birth_group
+)
+
+data$birth_group <- ifelse(
+  (data$year_birth == 1952 & data$month_birth %in% c("October", "November", "December")),
+  3,
+  data$birth_group
+)
+
+data$birth_group <- ifelse(
+  (data$year_birth == 1953 & data$month_birth %in% c("January", "February", "March")),
+  3,
+  data$birth_group
+)
+
+data$birth_group <- ifelse(
+  (data$year_birth == 1953 & data$month_birth %in% c("April", "May", "June", "July", "August", "September")),
+  4,
+  data$birth_group
+)
+
+data$birth_group <- ifelse(
+  (data$year_birth == 1953 & data$month_birth %in% c("October", "November", "December")),
+  5,
+  data$birth_group
+)
+
+data$birth_group <- ifelse(
+  (data$year_birth == 1954 & data$month_birth %in% c("January", "February", "March", "April", "May", "June")),
+  5,
+  data$birth_group
+)
+
+data$birth_group <- ifelse(
+  (data$year_birth == 1954 & data$month_birth %in% c("July", "August", "September", "October", "November", "December")),
+  6,
+  data$birth_group
+)
+
+data$birth_group <- ifelse(
+  (data$year_birth == 1955 & data$month_birth %in% c("January", "February", "March", "April", "May", "June")),
+  7,
+  data$birth_group
+)
+
+data$birth_group <- ifelse(
+  (data$year_birth == 1955 & data$month_birth %in% c("July", "August", "September", "October", "November", "December")),
+  8,
+  data$birth_group
+)
+
+data$birth_group <- ifelse(
+  (data$year_birth == 1956 & data$month_birth %in% c("January", "February", "March")),
+  9,
+  data$birth_group
+)
+
+table(data$birth_group)
+
+#Number of participants
+table(data$birth_group)
+data$birth_group_all <- ifelse(data$birth_group %in% 1:5, 2, 
+                             ifelse(data$birth_group %in% 6:9, 1, NA))
+table(data$birth_group_all)
+#######
+#Age at entry
+#######
+data$age=data$p21003_i0.x
+summary(data$age)
+# 
+cat("Overall: Mean =", round(mean(data$age, na.rm = TRUE), 1), 
+    ", SD =", round(sd(data$age, na.rm = TRUE), 1), "\n")
+
+# 
+cat("Group 1: Mean =", round(mean(data$age[data$birth_group_all == 1], na.rm = TRUE), 1), 
+    ", SD =", round(sd(data$age[data$birth_group_all == 1], na.rm = TRUE), 1), "\n")
+
+cat("Group 2: Mean =", round(mean(data$age[data$birth_group_all == 2], na.rm = TRUE), 1), 
+    ", SD =", round(sd(data$age[data$birth_group_all == 2], na.rm = TRUE), 1), "\n")
+
+
+p_value <- round(t.test(data$age[data$birth_group_all == 1], data$age[data$birth_group_all == 2])$p.value, 4)
+cat("P-value:", p_value, "\n")
+
+#Sex
+data$sex=data$p31.x
+table(data$sex)
+
+# 
+CrossTable(data$sex,data$birth_group_all)
+
+#
+p_value <- round(chisq.test(table(data$sex, data$birth_group_all))$p.value, 4)
+cat("P-value:", p_value, "\n")
+
+#Place of birth
+table(data$p1647_i0)
+data$birth_place <- ifelse(data$p1647_i0 %in% c("England", "Northern Ireland", "Republic of Ireland"), "England", 
+                           ifelse(data$p1647_i0 == "Scotland", "Scotland", 
+                                  ifelse(data$p1647_i0 == "Wales", "Wales", NA)))
+table(data$birth_place)
+# 
+CrossTable(data$birth_place,data$birth_group_all)
+
+# 
+p_value <- round(chisq.test(table(data$birth_place, data$birth_group_all))$p.value, 4)
+cat("P-value:", p_value, "\n")
+
+#birth month
+data$month_birth=data$p52.x
+table(data$month_birth)
+#
+data$month_birth_1 <- ifelse(data$month_birth %in% c("March", "April", "May"), 'Mar 1-May 31',
+                             ifelse(data$month_birth %in% c("June", "July", "August"), 'Jun 1-Aug 31',
+                                    ifelse(data$month_birth %in% c("September", "October", "November"), 'Sep 1-Nov 30',
+                                           ifelse(data$month_birth %in% c("December", "January", "February"), 'Dec 1-Feb 28', NA))))
+table(data$month_birth_1)
+CrossTable(data$month_birth_1,data$birth_group_all)
+# 
+p_value <- round(chisq.test(table(data$month_birth_1, data$birth_group_all))$p.value, 4)
+cat("P-value:", p_value, "\n")
+
+#ethnicity
+table(data$p21000_i0)
+data$ethnic <- ifelse(grepl("white|British", data$p21000_i0, ignore.case = TRUE), 'White', 'Non-white')
+table(data$ethnic)
+CrossTable(data$ethnic,data$birth_group_all)
+# 
+p_value <- round(chisq.test(table(data$ethnic, data$birth_group_all))$p.value, 4)
+cat("P-value:", p_value, "\n")
+
+#education
+data$education=data$p6138_i0
+table(data$education)
+data$education <- ifelse(grepl("A levels", data$p6138_i0, ignore.case = TRUE), "A levels",
+                         ifelse(grepl("professional", data$p6138_i0, ignore.case = TRUE), "Professional/other",
+                                ifelse(grepl("College", data$p6138_i0, ignore.case = TRUE), "College/university", 
+                                       "Below A levels")))
+table(data$education)
+CrossTable(data$education,data$birth_group_all)
+#
+p_value <- round(chisq.test(table(data$education, data$birth_group_all))$p.value, 4)
+cat("P-value:", p_value, "\n")
+
+
+#Household
+data$household=data$p738_i0
+data$household[data$p738_i0=='Less than 18,000']='<18,000'
+data$household[data$p738_i0=='18,000 to 30,999']= '18,000-30,999'
+data$household[data$p738_i0=='31,000 to 51,999']= '31,000-51,999'
+data$household[data$p738_i0=='52,000 to 100,000']= '52,000-100,000'
+data$household[data$p738_i0=='Greater than 100,000']= '>100,000'
+data$household[data$household=='']= '>100,000'
+table(data$household)
+CrossTable(data$household,data$birth_group_all)
+#
+p_value <- round(chisq.test(table(data$household, data$birth_group_all))$p.value, 4)
+cat("P-value:", p_value, "\n")
+
+#Townsend deprivation index
+data$TDI=data$p22189
+summary(data$TDI)
+
+#
+cat("Overall: Mean =", round(mean(data$TDI, na.rm = TRUE), 1), 
+    ", SD =", round(sd(data$TDI, na.rm = TRUE), 1), "\n")
+
+# 
+cat("Group 1: Mean =", round(mean(data$TDI[data$birth_group_all == 1], na.rm = TRUE), 1), 
+    ", SD =", round(sd(data$TDI[data$birth_group_all == 1], na.rm = TRUE), 1), "\n")
+
+cat("Group 2: Mean =", round(mean(data$TDI[data$birth_group_all == 2], na.rm = TRUE), 1), 
+    ", SD =", round(sd(data$TDI[data$birth_group_all == 2], na.rm = TRUE), 1), "\n")
+
+p_value <- round(t.test(data$TDI[data$birth_group_all == 1], data$TDI[data$birth_group_all == 2])$p.value, 4)
+cat("P-value:", p_value, "\n")
+
+#Smoking status
+table(data$p20116_i0)
+data$smoke=data$p20116_i0
+table(data$smoke)
+CrossTable(data$smoke,data$birth_group_all)
+p_value <- round(chisq.test(table(data$smoke, data$birth_group_all))$p.value, 4)
+cat("P-value:", p_value, "\n")
+
+#Alcohol
+table(data$p1558_i0.x)
+
+
+#BMI
+data$BMI=data$p21001_i0
+summary(data$BMI)
+
+cat("Overall: Mean =", round(mean(data$BMI, na.rm = TRUE), 1), 
+    ", SD =", round(sd(data$BMI, na.rm = TRUE), 1), "\n")
+
+cat("Group 1: Mean =", round(mean(data$BMI[data$birth_group_all == 1], na.rm = TRUE), 1), 
+    ", SD =", round(sd(data$BMI[data$birth_group_all == 1], na.rm = TRUE), 1), "\n")
+
+cat("Group 2: Mean =", round(mean(data$BMI[data$birth_group_all == 2], na.rm = TRUE), 1), 
+    ", SD =", round(sd(data$BMI[data$birth_group_all == 2], na.rm = TRUE), 1), "\n")
+
+p_value <- round(t.test(data$BMI[data$birth_group_all == 1], data$BMI[data$birth_group_all == 2])$p.value, 4)
+cat("P-value:", p_value, "\n")
+
+#	Summed MET minutes per week for all activity
+data$MET_week=data$p22040_i0
+summary(data$MET_week)
+summary(data$MET_week)
+
+cat("Overall: Median =", round(median(data$MET_week, na.rm = TRUE), 1), 
+    ", IQR = [", round(quantile(data$MET_week, 0.25, na.rm = TRUE), 1), ", ", 
+    round(quantile(data$MET_week, 0.75, na.rm = TRUE), 1), "]\n")
+
+cat("Group 1: Median =", round(median(data$MET_week[data$birth_group_all == 1], na.rm = TRUE), 1), 
+    ", IQR = [", round(quantile(data$MET_week[data$birth_group_all == 1], 0.25, na.rm = TRUE), 1), ", ", 
+    round(quantile(data$MET_week[data$birth_group_all == 1], 0.75, na.rm = TRUE), 1), "]\n")
+
+cat("Group 2: Median =", round(median(data$MET_week[data$birth_group_all == 2], na.rm = TRUE), 1), 
+    ", IQR = [", round(quantile(data$MET_week[data$birth_group_all == 2], 0.25, na.rm = TRUE), 1), ", ", 
+    round(quantile(data$MET_week[data$birth_group_all == 2], 0.75, na.rm = TRUE), 1), "]\n")
+
+p_value <- round(wilcox.test(data$MET_week[data$birth_group_all == 1], 
+                             data$MET_week[data$birth_group_all == 2])$p.value, 4)
+cat("P-value:", p_value, "\n")
+
+
