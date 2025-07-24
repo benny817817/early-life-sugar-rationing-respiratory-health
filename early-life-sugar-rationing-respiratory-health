@@ -81,9 +81,19 @@ table(data$birth_group)
 data$birth_group_all <- ifelse(data$birth_group %in% 1:5, 2, 
                              ifelse(data$birth_group %in% 6:9, 1, NA))
 table(data$birth_group_all)
-#######
-#Age at entry
-#######
+
+result <- data %>%
+  group_by(year_birth, month_birth) %>%
+  summarise(N = n()) %>%
+  arrange(year_birth, match(month_birth, c("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"))) %>%
+  ungroup() %>%
+  mutate(total_count = nrow(data)) %>%
+  mutate(percent = N / total_count * 100) %>%
+  mutate(cumulative_rate = cumsum(N) / total_count * 100)
+
+print(result)
+
+#Age 
 data$age=data$p21003_i0.x
 summary(data$age)
 # 
@@ -437,15 +447,12 @@ data$incident_asthma_time <- ifelse(is.na(data$incident_asthma_time),
                                           data$incident_asthma_time)
 summary(data$incident_asthma_time)
 
-
+varlist=(age, sex, race, birth_location, birth_month, income, townsend_index,
+real_food_price, parental_lung_disease, parents_alive, maternal_smoking, breastfed,
+fat_intake_birth_period, smoking_status, alcohol_intake, physical_activity, cvd, hypertension,
+diabetes, digestive_disease, kidney_disease, liver_disease, survey_year)
 model <- flexsurvreg(
-  Surv(time, event) ~ ration_group + age + sex + race + income + 
-    education + deprivation_index + parental_lung_disease +
-    maternal_smoking + breastfeeding + birth_month + 
-    fat_intake + smoking_status + alcohol + physical_activity +
-    CVD + hypertension + diabetes + digestive_disease + 
-    kidney_disease + liver_disease + survey_year + 
-    calendar_month + calendar_year,
+  Surv(time, event) ~ ration_group +varlist ,
   data = df,
   dist = "gompertz"
 )
@@ -476,7 +483,99 @@ fit <- sem(model, data = df, se = "bootstrap", bootstrap = 1000)  # bootstrap可
 summary(fit, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
 # 
 parameterEstimates(fit, standardized = TRUE)
+#####################################
+data$birth_group_1=NA
+data$birth_group_1[data$birth_group==1|data$birth_group==2]=4
+data$birth_group_1[data$birth_group==3|data$birth_group==4]=3
+data$birth_group_1[data$birth_group==5]=2
+data$birth_group_1[data$birth_group==6|data$birth_group==7|data$birth_group==8|data$birth_group==9]=1
+table(data$birth_group_1)
+data$birth_group_1=as.factor(data$birth_group_1)
 
+# data$age 
+# data$birth_group_1 (出生组，1, 2, 3 或 4)
+reference_group <- 1  # 参考组
+comparison_groups <- c(2, 3, 4)  # 要和参考组比较的其他组
+
+event_time_map <- list(
+  incident_COPD = "incident_COPD_time",
+  incident_asthma = "incident_asthma_time",
+  incident_IPF = "incident_IPF_time"
+)
+
+results <- list()
+
+for (event_var in names(event_time_map)) {
+  
+  time_var <- event_time_map[[event_var]]
+  
+  event_data <- data[data[[event_var]] == 1, ]
+  
+  event_data$age_at_onset <- event_data$age + event_data[[time_var]] / 365
+  
+  event_results <- list()
+  
+  for (comp_group in comparison_groups) {
+    reference_data <- event_data[event_data$birth_group_1 == reference_group, ]
+    comparison_data <- event_data[event_data$birth_group_1 == comp_group, ]
+    
+    mean_reference <- mean(reference_data$age_at_onset)
+    mean_comparison <- mean(comparison_data$age_at_onset)
+    
+    se_reference <- sd(reference_data$age_at_onset) / sqrt(nrow(reference_data))
+    se_comparison <- sd(comparison_data$age_at_onset) / sqrt(nrow(comparison_data))
+    
+    t_test_reference <- t.test(reference_data$age_at_onset)
+    t_test_comparison <- t.test(comparison_data$age_at_onset)
+    
+    reference_ci_lower <- round(t_test_reference$conf.int[1], 2)
+    reference_ci_upper <- round(t_test_reference$conf.int[2], 2)
+    comparison_ci_lower <- round(t_test_comparison$conf.int[1], 2)
+    comparison_ci_upper <- round(t_test_comparison$conf.int[2], 2)
+    
+    difference <- mean_comparison - mean_reference
+    
+    ci_lower <- difference - 1.96 * sqrt(se_reference^2 + se_comparison^2)
+    ci_upper <- difference + 1.96 * sqrt(se_reference^2 + se_comparison^2)
+    
+    t_test_result <- t.test(reference_data$age_at_onset, comparison_data$age_at_onset)
+    
+    event_results[[as.character(comp_group)]] <- list(
+      mean_reference = round(mean_reference, 2),
+      mean_comparison = round(mean_comparison, 2),
+      reference_ci_lower = reference_ci_lower,
+      reference_ci_upper = reference_ci_upper,
+      comparison_ci_lower = comparison_ci_lower,
+      comparison_ci_upper = comparison_ci_upper,
+      difference = round(difference, 2),
+      ci_lower = round(ci_lower, 2),
+      ci_upper = round(ci_upper, 2),
+      p_value = round(t_test_result$p.value, 4)
+    )
+  }
+  
+  results[[event_var]] <- event_results
+}
+
+for (event_var in names(event_time_map)) {
+  cat("\nEvent: ", event_var, "\n")
+  for (comp_group in comparison_groups) {
+    cat("\nComparison: Group", comp_group, "vs Group", reference_group, "\n")
+    cat("Group", reference_group, "mean age at onset: ", 
+        results[[event_var]][[as.character(comp_group)]]$mean_reference, 
+        " [", results[[event_var]][[as.character(comp_group)]]$reference_ci_lower, 
+        ", ", results[[event_var]][[as.character(comp_group)]]$reference_ci_upper, "]\n")
+    cat("Group", comp_group, "mean age at onset: ", 
+        results[[event_var]][[as.character(comp_group)]]$mean_comparison, 
+        " [", results[[event_var]][[as.character(comp_group)]]$comparison_ci_lower, 
+        ", ", results[[event_var]][[as.character(comp_group)]]$comparison_ci_upper, "]\n")
+    cat("Difference in age at onset (Group", comp_group, "- Group", reference_group, "): ", 
+        results[[event_var]][[as.character(comp_group)]]$difference, 
+        " [", results[[event_var]][[as.character(comp_group)]]$ci_lower, 
+        ", ", results[[event_var]][[as.character(comp_group)]]$ci_upper, "]\n")
+    cat("P value: ", results[[event_var]][[as.character(comp_group)]]$p_value, "\n")
+  }
+}
 ####################################################north_coordinate
 data <- data %>%
   mutate(
@@ -494,8 +593,7 @@ data <- data %>%
   mutate(north_decile = factor(north_decile, levels = 1:9,
                               labels = paste0("north coordinate – decile ", 1:9)))
 
-# 行：north coordinate – decile 1 到 9
-# 列：CVD, MI, HF, AF, Stroke, CVD_Mortality
+# north coordinate – decile 1 到 9
 deciles <- levels(data$north_decile)
 outcomes <- names(endpoints)
 
@@ -555,3 +653,412 @@ for (decile in deciles) {
 
 final_table <- as.data.frame(results_matrix, stringsAsFactors = FALSE)
 print(final_table)
+
+outcomes <- c(
+  "FEV1_predicted_percentage", 
+  "FVC_pred_percentage", 
+  "FEV1_FVC_ratio", 
+  "PEF"
+)
+
+results_table <- data.frame(
+  Outcome = character(),
+  Model = character(),
+  Mean_Group1 = numeric(),
+  SD_Group1 = numeric(),
+  Mean_Group2 = numeric(),
+  SD_Group2 = numeric(),
+  Estimate = numeric(),
+  CI_Lower = numeric(),
+  CI_Upper = numeric(),
+  P_Value = numeric(),
+  stringsAsFactors = FALSE
+)
+
+for (outcome in outcomes) {
+  
+  desc_group1 <- data %>%
+    filter(birth_group_1 == 1) %>%
+    dplyr::summarize(
+      Mean = mean(.data[[outcome]], na.rm = TRUE),
+      SD = sd(.data[[outcome]], na.rm = TRUE)
+    )
+  
+
+  desc_group2 <- data %>%
+    filter(birth_group_1 == 2) %>%
+    dplyr::summarize(
+      Mean = mean(.data[[outcome]], na.rm = TRUE),
+      SD = sd(.data[[outcome]], na.rm = TRUE)
+    )
+  
+
+  for (model_name in names(model_forms)) {
+    
+
+    formula <- as.formula(paste(outcome, "~", model_forms[[model_name]]))
+  
+    lm_model <- lm(formula, data = data)
+    
+
+    tidy_model <- tidy(lm_model, conf.int = TRUE, conf.level = 0.95)
+    
+
+    coef_name <- tidy_model %>% 
+      filter(str_detect(term, "^birth_group_1")) %>% 
+      pull(term)
+    
+
+    if (length(coef_name) == 0) {
+      warning(paste("fail", outcome, model_name, "'birth_group_1' "))
+      next
+    }
+    
+    
+    coef_row <- tidy_model %>% filter(term == coef_name)
+    
+    
+    results_table <- results_table %>%
+      add_row(
+        Outcome = outcome,
+        Model = model_name,
+        Mean_Group1 = desc_group1$Mean,
+        SD_Group1 = desc_group1$SD,
+        Mean_Group2 = desc_group2$Mean,
+        SD_Group2 = desc_group2$SD,
+        Estimate = coef_row$estimate,
+        CI_Lower = coef_row$conf.low,
+        CI_Upper = coef_row$conf.high,
+        P_Value = coef_row$p.value
+      )
+  }
+}
+
+results_table_formatted <- results_table %>%
+  mutate(
+    Mean_Group1 = round(Mean_Group1, 2),
+    SD_Group1 = round(SD_Group1, 2),
+    Mean_Group2 = round(Mean_Group2, 2),
+    SD_Group2 = round(SD_Group2, 2),
+    Estimate = round(Estimate, 3),
+    CI_Lower = round(CI_Lower, 3),
+    CI_Upper = round(CI_Upper, 3),
+    P_Value = signif(P_Value, 3)
+  ) %>%
+  # 
+  mutate(
+    Group1 = paste0(Mean_Group1, " ± ", SD_Group1),
+    Group2 = paste0(Mean_Group2, " ± ", SD_Group2)
+  ) %>%
+  # 
+  mutate(
+    `Coefficient (95% CI)` = paste0(Estimate, " (", CI_Lower, ", ", CI_Upper, ")")
+  ) %>%
+   
+  select(
+    Outcome,
+    Model,
+    Group1,
+    Group2,
+    `Coefficient (95% CI)`,
+    P_Value
+  ) %>%
+
+  rename(
+    `Mean (Group 1)` = Group1,
+    `Mean (Group 2)` = Group2,
+    `P-Value` = P_Value
+  )
+print(results_table_formatted)
+#  PRS Calculation in R
+library(data.table)    # For fast data import
+library(dplyr)         # For data manipulation
+library(ggplot2)       # For plotting
+library(stringr)       # For string manipulation
+
+gwas_file <- "GWASZJZ2025_summary_stats.txt"
+gwas <- fread(gwas_file)
+# Quality control: Keep SNPs with beta and p-values
+gwas <- gwas %>% filter(!is.na(beta), !is.na(pval))
+genotype_file <- "imputedZJZ_genotypes.raw"
+genos <- fread(genotype_file)
+geno_snps <- names(genos)[-(1:6)]
+snp_info <- fread("snp_info_type2_2025_03.txt") 
+snp_info <- snp_info %>% filter(MAF >= 0.01, INFO >= 0.3)
+snps_to_use <- intersect(gwas$SNP, snp_info$SNP)
+snps_to_use <- intersect(snps_to_use, geno_snps)
+gwas <- gwas %>% filter(SNP %in% snps_to_use)
+genos <- genos[, c("FID", "IID", snps_to_use), with = FALSE]
+ld_clumped_snps <- fread("clumped_snps12498.txt")  # One SNP per row, header: SNP
+snps_final <- intersect(snps_to_use, ld_clumped_snps$SNP)
+gwas <- gwas %>% filter(SNP %in% snps_final)
+genos <- genos[, c("FID", "IID", snps_final), with = FALSE]
+
+weights <- gwas %>% select(SNP, beta)
+weights <- as.data.frame(weights)
+rownames(weights) <- weights$SNP
+
+prs <- genos %>% select(FID, IID)
+prs$PRS <- 0
+
+for (snp in snps_final) {
+  beta <- weights[snp, "beta"]
+  prs$PRS <- prs$PRS + genos[[snp]] * beta
+}
+
+# Assume phenotype file: "phenotypes.txt", columns: IID, sex, age, outcome, etc.
+pheno <- fread("phenotypes.txt")
+prs <- merge(prs, pheno, by = "IID")
+
+prs$PRS_z <- scale(prs$PRS)
+prs$PRS_group <- case_when(
+  prs$PRS_quintile == "Low" ~ "Low",
+  prs$PRS_quintile == "High" ~ "High",
+  TRUE ~ "Medium"
+)
+
+
+write.table(prs, "PRS_results.txt", row.names = FALSE, quote = FALSE, sep = "\t")
+
+
+ggplot(prs, aes(x = PRS_z, fill = PRS_group)) +
+  geom_histogram(bins = 50, alpha = 0.6, position = "identity") +
+  labs(x = "Standardized PRS", y = "Count") +
+  theme_classic() +
+  scale_fill_manual(values = c("#8ecae6", "#ffd166", "#ef476f"))
+
+logit_model <- glm(outcome ~ PRS_z + sex + age + PC1 + PC2 + PC3 + PC4, 
+                   data = prs, family = "binomial")
+summary(logit_model)
+
+
+prs$PRS_group <- factor(prs$PRS_group, levels = c("Low", "Medium", "High"))
+table(prs$PRS_group)
+glm_group <- glm(outcome ~ PRS_group + sex + age + PC1 + PC2 + PC3 + PC4, 
+                 data = prs, family = "binomial")
+summary(glm_group)
+# Asthma
+asthma_snps <- fread("asthma_snps.txt")$SNP
+gwas_asthma <- gwas %>% filter(SNP %in% asthma_snps)
+weights_asthma <- gwas_asthma %>% select(SNP, beta)
+prs$PRS_asthma <- 0
+for (snp in asthma_snps) {
+  if (snp %in% colnames(genos)) {
+    beta <- weights_asthma[snp, "beta"]
+    prs$PRS_asthma <- prs$PRS_asthma + genos[[snp]] * beta
+  }
+}
+
+###############participants born outside UK
+####Date of birth
+data$year_birth=data$p34
+data$month_birth=data$p52.x
+data$birth_group <- NA  
+
+data$birth_group <- ifelse(
+  (data$year_birth == 1951 & data$month_birth %in% c("October", "November", "December")) | 
+    (data$year_birth == 1952 & data$month_birth %in% c("January", "February", "March")),
+  1,
+  data$birth_group
+)
+
+data$birth_group <- ifelse(
+  (data$year_birth == 1952 & data$month_birth %in% c("April", "May", "June", "July", "August", "September")),
+  2,
+  data$birth_group
+)
+
+data$birth_group <- ifelse(
+  (data$year_birth == 1952 & data$month_birth %in% c("October", "November", "December")),
+  3,
+  data$birth_group
+)
+
+data$birth_group <- ifelse(
+  (data$year_birth == 1953 & data$month_birth %in% c("January", "February", "March")),
+  3,
+  data$birth_group
+)
+
+data$birth_group <- ifelse(
+  (data$year_birth == 1953 & data$month_birth %in% c("April", "May", "June", "July", "August", "September")),
+  4,
+  data$birth_group
+)
+
+data$birth_group <- ifelse(
+  (data$year_birth == 1953 & data$month_birth %in% c("October", "November", "December")),
+  5,
+  data$birth_group
+)
+
+data$birth_group <- ifelse(
+  (data$year_birth == 1954 & data$month_birth %in% c("January", "February", "March", "April", "May", "June")),
+  5,
+  data$birth_group
+)
+
+data$birth_group <- ifelse(
+  (data$year_birth == 1954 & data$month_birth %in% c("July", "August", "September", "October", "November", "December")),
+  6,
+  data$birth_group
+)
+
+data$birth_group <- ifelse(
+  (data$year_birth == 1955 & data$month_birth %in% c("January", "February", "March", "April", "May", "June")),
+  7,
+  data$birth_group
+)
+
+data$birth_group <- ifelse(
+  (data$year_birth == 1955 & data$month_birth %in% c("July", "August", "September", "October", "November", "December")),
+  8,
+  data$birth_group
+)
+
+data$birth_group <- ifelse(
+  (data$year_birth == 1956 & data$month_birth %in% c("January", "February", "March")),
+  9,
+  data$birth_group
+)
+
+result <- data %>%
+  group_by(year_birth, month_birth) %>%
+  summarise(N = n()) %>%
+  arrange(year_birth, match(month_birth, c("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"))) %>%
+  ungroup() %>%
+  mutate(total_count = nrow(data)) %>%
+  mutate(percent = N / total_count * 100) %>%
+  mutate(cumulative_rate = cumsum(N) / total_count * 100)
+
+print(result)
+table(data$birth_group)
+sum(!is.na(data$birth_group))
+
+
+#Country of birth (UK/elsewhere) | Instance 0
+table(data$p1647_i0)
+data <- data[data$p1647_i0 %in% c("England", "Northern Ireland", "Republic of Ireland", "Scotland", "Wales")==FALSE, ]
+names(data) <- make.names(names(data), unique = TRUE)
+data <- data %>% filter(!is.na(birth_group))
+
+library(tableone)
+
+vars <- c(
+  "birth_group_1", "age", "sex",  "month_birth_1", "ethnic",
+  "education", "household", "TDI", "smoke", "alcohol", "BMI",
+  "MET_week", "CVD", "Hypertension", "High_cholesterol", "diabetes",
+  "Digestive", "Kidney", "Liver", "parent_dementia", "parent_alive",
+  "Maternal_smoking", "Breastfed", "birth_weight"
+  
+)
+factorVars <- c(
+  "birth_group_1", "sex",  "month_birth_1", "ethnic",
+  "education", "smoke", "alcohol", "CVD", "Hypertension",
+  "High_cholesterol", "diabetes", "Digestive", "Kidney",
+  "Liver", "parent_dementia", "parent_alive",
+  "Maternal_smoking", "Breastfed"
+)
+
+strata_var <- "birth_group_1"  
+table1 <- CreateTableOne(
+  vars = vars,
+  strata = strata_var,
+  data = data,
+  factorVars = factorVars,
+  addOverall = TRUE,  
+  smd = FALSE          
+)
+
+table_final <- print(
+  table1, 
+  showAllLevels = TRUE,  
+  exact = "ethnic",       
+  pDigits = 3,             
+  catDigits = 1,            
+  contDigits = 1,           
+  smd = FALSE               
+)
+
+
+print(table_final)
+cubic_data <- data[, c("birth_group_1", ,'birth_group','incident_IPF_time','incident_IPF',
+                       'incident_COPD_time','incident_COPD', 'incident_asthma_time','incident_asthma',age, 
+sex, race, birth_location, birth_month, income, townsend_index,
+real_food_price, parental_lung_disease, parents_alive, maternal_smoking, breastfed,
+fat_intake_birth_period, smoking_status, alcohol_intake, physical_activity, cvd, hypertension,
+diabetes, digestive_disease, kidney_disease, liver_disease, survey_year
+                      )]
+cubic_data_var=(age, sex, race, birth_location, birth_month, income, townsend_index,
+real_food_price, parental_lung_disease, parents_alive, maternal_smoking, breastfed,
+fat_intake_birth_period, smoking_status, alcohol_intake, physical_activity, cvd, hypertension,
+diabetes, digestive_disease, kidney_disease, liver_disease, survey_year)
+
+cubic_data$birth_group=as.numeric(cubic_data$birth_group)
+dd <- datadist(cubic_data)
+options(datadist='dd') 
+fit<- cph(Surv(incident_asthma_time, incident_asthma) ~ rcs(birth_group,6)+ cubic_data_var  ,data=cubic_data)
+dd$limits$birth_group[2] <- 6
+fit=update(fit)
+Pre0 <-rms::Predict(fit,birth_group,fun=exp,
+                    type="predictions",ref.zero=TRUE,conf.int = 0.95,digits=2);
+pic_ <- ggplot(Pre0) + 
+  xlim(1, 9) + 
+  ylim(0, 4) + 
+  scale_x_continuous(breaks = seq(1, 9, 1)) + 
+  scale_y_continuous(breaks = seq(0.5, 1.6, 0.1), expand = c(0, 0))   
+pic_
+
+cubic_data <- data[, c("birth_group_1", ,'birth_group','incident_IPF_time','incident_IPF',
+                       'incident_COPD_time','incident_COPD', 'incident_asthma_time','incident_asthma',age, 
+sex, race, birth_location, birth_month, income, townsend_index,
+real_food_price, parental_lung_disease, parents_alive, maternal_smoking, breastfed,
+fat_intake_birth_period, smoking_status, alcohol_intake, physical_activity, cvd, hypertension,
+diabetes, digestive_disease, kidney_disease, liver_disease, survey_year
+                      )]
+cubic_data_var=(age, sex, race, birth_location, birth_month, income, townsend_index,
+real_food_price, parental_lung_disease, parents_alive, maternal_smoking, breastfed,
+fat_intake_birth_period, smoking_status, alcohol_intake, physical_activity, cvd, hypertension,
+diabetes, digestive_disease, kidney_disease, liver_disease, survey_year)
+
+cubic_data$birth_group=as.numeric(cubic_data$birth_group)
+dd <- datadist(cubic_data)
+options(datadist='dd') 
+fit<- cph(Surv(incident_COPD_time, incident_COPD) ~ rcs(birth_group,6)+ cubic_data_var  ,data=cubic_data)
+dd$limits$birth_group[2] <- 6
+fit=update(fit)
+Pre0 <-rms::Predict(fit,birth_group,fun=exp,
+                    type="predictions",ref.zero=TRUE,conf.int = 0.95,digits=2);
+pic_ <- ggplot(Pre0) + 
+  xlim(1, 9) + 
+  ylim(0, 4) + 
+  scale_x_continuous(breaks = seq(1, 9, 1)) + 
+  scale_y_continuous(breaks = seq(0.5, 1.6, 0.1), expand = c(0, 0))   
+pic_
+
+cubic_data <- data[, c("birth_group_1", ,'birth_group','incident_IPF_time','incident_IPF',
+                       'incident_COPD_time','incident_COPD', 'incident_asthma_time','incident_asthma',age, 
+sex, race, birth_location, birth_month, income, townsend_index,
+real_food_price, parental_lung_disease, parents_alive, maternal_smoking, breastfed,
+fat_intake_birth_period, smoking_status, alcohol_intake, physical_activity, cvd, hypertension,
+diabetes, digestive_disease, kidney_disease, liver_disease, survey_year
+                      )]
+cubic_data_var=(age, sex, race, birth_location, birth_month, income, townsend_index,
+real_food_price, parental_lung_disease, parents_alive, maternal_smoking, breastfed,
+fat_intake_birth_period, smoking_status, alcohol_intake, physical_activity, cvd, hypertension,
+diabetes, digestive_disease, kidney_disease, liver_disease, survey_year)
+
+cubic_data$birth_group=as.numeric(cubic_data$birth_group)
+dd <- datadist(cubic_data)
+options(datadist='dd') 
+fit<- cph(Surv(incident_IPF_time, incident_IPF) ~ rcs(birth_group,6)+ cubic_data_var  ,data=cubic_data)
+dd$limits$birth_group[2] <- 6
+fit=update(fit)
+Pre0 <-rms::Predict(fit,birth_group,fun=exp,
+                    type="predictions",ref.zero=TRUE,conf.int = 0.95,digits=2);
+pic_ <- ggplot(Pre0) + 
+  xlim(1, 9) + 
+  ylim(0, 4) + 
+  scale_x_continuous(breaks = seq(1, 9, 1)) + 
+  scale_y_continuous(breaks = seq(0.5, 1.6, 0.1), expand = c(0, 0))   
+pic_
