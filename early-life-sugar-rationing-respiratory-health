@@ -242,5 +242,290 @@ cat("Group 2: Median =", round(median(data$MET_week[data$birth_group_all == 2], 
 p_value <- round(wilcox.test(data$MET_week[data$birth_group_all == 1], 
                              data$MET_week[data$birth_group_all == 2])$p.value, 4)
 cat("P-value:", p_value, "\n")
+library(flexsurv)
+library(survival)
+fit_and_extract_AIC_BIC <- function(time_var, event_var, dist) {
+  model <- survreg(Surv(time_var, event_var) ~ 1, data = data, dist = dist)
+  aic <- AIC(model)
+  bic <- BIC(model)
+  return(c(AIC = aic, BIC = bic))
+}
+variables <- list(
+  "incident_IPF" = "incident_IPF_time",
+  "incident_COPD" = "incident_COPD_time",
+  "incident_asthma" = "incident_asthma_time"
+)
+result <- data.frame(
+  Model = c("Weibull", "Logistic", "Log normal", "Exponential"),
+  `incident_IPF_AIC` = NA,
+  `incident_COPD_AIC` = NA,
+  `incident_asthma_AIC` = NA,
+  `incident_IPF_BIC` = NA,
+  `incident_COPD_BIC` = NA,
+  `incident_asthma_BIC` = NA
+)
+for (var in names(variables)) {
+  time_var <- data[[variables[[var]]]]
+  event_var <- data[[var]]
+  # 对每个分布进行拟合并提取结果
+  result[1, paste(var, "_AIC", sep = "")] <- fit_and_extract_AIC_BIC(time_var, event_var, dist = "weibull")[1]  # Weibull
+  result[2, paste(var, "_AIC", sep = "")] <- fit_and_extract_AIC_BIC(time_var, event_var, dist = "logistic")[1]  # Logistic
+  result[3, paste(var, "_AIC", sep = "")] <- fit_and_extract_AIC_BIC(time_var, event_var, dist = "lognormal")[1]  # Log normal
+  result[4, paste(var, "_AIC", sep = "")] <- fit_and_extract_AIC_BIC(time_var, event_var, dist = "exponential")[1]  # Exponential
+  result[1, paste(var, "_BIC", sep = "")] <- fit_and_extract_AIC_BIC(time_var, event_var, dist = "weibull")[2]  # Weibull
+  result[2, paste(var, "_BIC", sep = "")] <- fit_and_extract_AIC_BIC(time_var, event_var, dist = "logistic")[2]  # Logistic
+  result[3, paste(var, "_BIC", sep = "")] <- fit_and_extract_AIC_BIC(time_var, event_var, dist = "lognormal")[2]  # Log normal
+  result[4, paste(var, "_BIC", sep = "")] <- fit_and_extract_AIC_BIC(time_var, event_var, dist = "exponential")[2]  # Exponential
+}
+
+#IPF ICD
+data$incident_IPF=NA
+
+IPF=function(x){
+  for (i in 1:nrow(data)) {
+    if (is.na(data$incident_IPF[i])&grepl("J84|J82|J80",data[[x]][i])) {
+      data$incident_IPF[i]=1
+      print(i)
+    }
+  }
+  return(data$incident_IPF)
+}
+
+for (p in ls(data,pattern="41270")) {
+  data$incident_IPF=IPF(p)
+}   
+
+data$incident_IPF[is.na(data$incident_IPF)]=0
+table(data$incident_IPF)
 
 
+#IPF time
+data$incident_IPF_time = NA
+yuyu=function(y){
+  y=gsub("41270_","41280_a",y)
+  return(y)
+}
+IPF=function(x){
+  for (i in which(data$incident_IPF==1)) {
+    if (is.na(data$incident_IPF_time[i])&grepl("J84|J82|J80",data[[x]][i])){
+      data$incident_IPF_time[i]=data[[yuyu(x)]][i]
+    }
+  }
+  return(data$incident_IPF_time)
+}
+
+for (n in ls(data,pattern="41270_")) {
+  data$incident_IPF_time=IPF(n)
+}   
+
+data$incident_IPF_time=ymd(data$incident_IPF_time)-ymd(data$p53_i0)
+data$incident_IPF_time=as.numeric(data$incident_IPF_time)
+summary(data$incident_IPF_time)
+table(data$incident_IPF_time<0)
+# 找出data$incident_IPF_time
+
+data$survival_time=ymd(data$p40000_i0)-ymd(data$p53_i0)
+data$survival_time=as.numeric(data$survival_time)
+summary(data$survival_time)
+data$incident_IPF_time <- ifelse(is.na(data$incident_IPF_time), 
+                                ifelse(is.na(data$survival_time), 
+                                       as.numeric(ymd('2023-03-25') - ymd(data$p53_i0)), 
+                                       data$survival_time), 
+                                data$incident_IPF_time)
+summary(data$incident_IPF_time/365)
+
+
+data$birth_group=as.factor(data$birth_group)
+
+
+############################################incident COPD
+#COPD
+data$incident_COPD=NA
+MI=function(x){
+  for (i in 1:nrow(data)) {
+    if (is.na(data$incident_COPD[i])&grepl('J44',data[[x]][i])) {
+      data$incident_COPD[i]=1
+      print(i)
+    }
+  }
+  return(data$incident_COPD)
+}
+
+for (p in ls(data,pattern="41270")) {
+  data$incident_COPD=MI(p)
+}   
+
+data$incident_COPD[is.na(data$incident_COPD)]=0
+table(data$incident_COPD)
+
+
+#COPD time
+data$incident_COPD_time = NA
+yuyu=function(y){
+  y=gsub("41270_","41280_a",y)
+  return(y)
+}
+MI=function(x){
+  for (i in which(data$incident_COPD==1)) {
+    if (is.na(data$incident_COPD_time[i])&grepl('J44',data[[x]][i])){
+      data$incident_COPD_time[i]=data[[yuyu(x)]][i]
+    }
+  }
+  return(data$incident_COPD_time)
+}
+
+for (n in ls(data,pattern="41270_")) {
+  data$incident_COPD_time=MI(n)
+}   
+
+
+data$survival_time=ymd(data$p40000_i0)-ymd(data$p53_i0)
+data$survival_time=as.numeric(data$survival_time)
+summary(data$survival_time)
+data$incident_COPD_time <- ifelse(is.na(data$incident_COPD_time), 
+                                ifelse(is.na(data$survival_time), 
+                                       as.numeric(ymd('2023-03-25') - ymd(data$p53_i0)), 
+                                       data$survival_time), 
+                                data$incident_COPD_time)
+summary(data$incident_COPD_time)
+
+
+############################################asthma
+#asthma
+data$incident_asthma=NA
+MI=function(x){
+  for (i in 1:nrow(data)) {
+    if (is.na(data$incident_asthma[i])&grepl('J45.0|J45.1|J45.8|J45.9',data[[x]][i])) {
+      data$incident_asthma[i]=1
+      print(i)
+    }
+  }
+  return(data$incident_asthma)
+}
+
+for (p in ls(data,pattern="41270")) {
+  data$incident_asthma=MI(p)
+}   
+
+
+#asthma time
+data$incident_asthma_time = NA
+yuyu=function(y){
+  y=gsub("41270_","41280_a",y)
+  return(y)
+}
+MI=function(x){
+  for (i in which(data$incident_asthma==1)) {
+    if (is.na(data$incident_asthma_time[i])&grepl('J45.0|J45.1|J45.8|J45.9',data[[x]][i])){
+      data$incident_asthma_time[i]=data[[yuyu(x)]][i]
+    }
+  }
+  return(data$incident_asthma_time)
+}
+
+for (n in ls(data,pattern="41270_")) {
+  data$incident_asthma_time=MI(n)
+}   
+
+data$survival_time=ymd(data$p40000_i0)-ymd(data$p53_i0)
+data$survival_time=as.numeric(data$survival_time)
+summary(data$survival_time)
+data$incident_asthma_time <- ifelse(is.na(data$incident_asthma_time), 
+                                          ifelse(is.na(data$survival_time), 
+                                                 as.numeric(ymd('2023-03-25') - ymd(data$p53_i0)), 
+                                                 data$survival_time), 
+                                          data$incident_asthma_time)
+summary(data$incident_asthma_time)
+
+
+model <- flexsurvreg(
+  Surv(time, event) ~ ration_group + age + sex + race + income + 
+    education + deprivation_index + parental_lung_disease +
+    maternal_smoking + breastfeeding + birth_month + 
+    fat_intake + smoking_status + alcohol + physical_activity +
+    CVD + hypertension + diabetes + digestive_disease + 
+    kidney_disease + liver_disease + survey_year + 
+    calendar_month + calendar_year,
+  data = df,
+  dist = "gompertz"
+)
+summary(model)
+
+####################################################north_coordinate
+data <- data %>%
+  mutate(
+    birth_group_1 = factor(birth_group_1, levels = c(1, 2))
+  )
+
+endpoints <- list(
+  IPF = c(time = "incident_IPF_time", event = "incident_IPF"),
+  COPD = c(time = "incident_COPD_time", event = "incident_COPD"),
+  asthma = c(time = "incident_asthma_time", event = "incident_asthma")
+)
+
+data <- data %>%
+  mutate(north_decile = ntile(north_coordinate, 9)) %>%
+  mutate(north_decile = factor(north_decile, levels = 1:9,
+                              labels = paste0("north coordinate – decile ", 1:9)))
+
+# 行：north coordinate – decile 1 到 9
+# 列：CVD, MI, HF, AF, Stroke, CVD_Mortality
+deciles <- levels(data$north_decile)
+outcomes <- names(endpoints)
+
+results_matrix <- matrix(NA, nrow = length(deciles), ncol = length(outcomes),
+                         dimnames = list(deciles, outcomes))
+
+for (decile in deciles) {
+  subset_data <- filter(data, north_decile == decile)
+  
+  if(nrow(subset_data) < 10){
+    warning(paste(decile, "sample less than 10"))
+    next
+  }
+  
+  for (endpoint in outcomes) {
+    time_var <- endpoints[[endpoint]]["time"]
+    event_var <- endpoints[[endpoint]]["event"]
+    
+    if(!(time_var %in% names(subset_data)) | !(event_var %in% names(subset_data))){
+      warning(paste("outcome", endpoint, "no data。"))
+      next
+    }
+    
+    formula <- as.formula(paste("Surv(", time_var, ",", event_var, ") ~ birth_group_1 + age + sex + ethnic + education +
+               household + TDI + smoke + BMI + alcohol + diabetes + Hypertension + parent_lung_dis"))
+    fit <- tryCatch(
+      coxph(formula, data = subset_data),
+      error = function(e) { 
+        warning(paste("fail", e$message, "in", decile, "oucome", endpoint))
+        return(NULL)
+      }
+    )
+    
+    if(is.null(fit)){
+      next
+    }
+    
+    summary_fit <- summary(fit)
+    
+    coef_names <- rownames(summary_fit$coefficients)
+    birth_coef <- coef_names[grepl("^birth_group_1", coef_names)][1]
+    
+    if(is.na(birth_coef)){
+      warning(paste(decile, "outcome", endpoint, "don't find birth_group_1 coef。"))
+      next
+    }
+    
+    hr <- round(summary_fit$coefficients[birth_coef, "exp(coef)"], 2)
+    lower_ci <- round(summary_fit$conf.int[birth_coef, "lower .95"], 2)
+    upper_ci <- round(summary_fit$conf.int[birth_coef, "upper .95"], 2)
+    
+    hr_ci_str <- paste0(hr, " (", lower_ci, " - ", upper_ci, ")")
+    
+    results_matrix[decile, endpoint] <- hr_ci_str
+  }
+}
+
+final_table <- as.data.frame(results_matrix, stringsAsFactors = FALSE)
+print(final_table)
