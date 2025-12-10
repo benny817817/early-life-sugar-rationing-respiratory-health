@@ -1,0 +1,247 @@
+############################################
+## IPF time: for each participant, take the earliest
+## hospital admission date with ICD-10 J84.1
+############################################
+
+library(lubridate)
+
+## Mapping function: ICD-10 code columns (41270_*) -> date columns (41280_a*)
+yuyu <- function(y){
+  gsub("41270_", "41280_a", y)
+}
+
+## 1) Create a raw event-date variable (character) to store original 41280 values
+data$incident_IPF_date_new_raw <- rep(NA_character_, nrow(data))
+
+## 2) Loop over all 41270_* code columns
+for (x in ls(data, pattern = "41270_")) {
+  
+  date_col <- yuyu(x)
+  if (!date_col %in% names(data)) next  # skip if there is no corresponding 41280_a column
+  
+  ## ICD-10 codes and corresponding dates in this column
+  code_vec <- data[[x]]
+  date_vec <- data[[date_col]]
+  
+  ## Participants with incident IPF, a J84.1 code, and a non-missing date in this column
+  idx <- which(
+    data$incident_IPF == 1 &
+      !is.na(code_vec) &
+      grepl("J84.1", code_vec) &
+      !is.na(date_vec)
+  )
+  
+  for (i in idx) {
+    ## Extract the date for this participant (store as character; compare as Date)
+    new_raw  <- as.character(date_vec[i])
+    new_date <- ymd(new_raw)   # parse to Date for comparison
+    if (is.na(new_date)) next  # skip if the date cannot be parsed
+    
+    if (is.na(data$incident_IPF_date_new_raw[i])) {
+      ## First candidate date for this participant
+      data$incident_IPF_date_new_raw[i] <- new_raw
+    } else {
+      ## Compare with the existing candidate date and keep the earliest one
+      old_date <- ymd(data$incident_IPF_date_new_raw[i])
+      if (is.na(old_date) || new_date < old_date) {
+        data$incident_IPF_date_new_raw[i] <- new_raw
+      }
+    }
+  }
+}
+
+## 3) Convert raw character dates to Date
+data$incident_IPF_date_new <- ymd(data$incident_IPF_date_new_raw)
+
+## 4) Baseline date (field 53) as Date
+data$p53_i0_date <- ymd(data$p53_i0)
+
+## 5) Time from baseline to IPF event (days)
+data$incident_IPF_time_new <- as.numeric(
+  data$incident_IPF_date_new - data$p53_i0_date
+)
+
+## 6) Survival time to death (field 40000) as in the original script
+data$survival_time <- ymd(data$p40000_i0) - ymd(data$p53_i0)
+data$survival_time <- as.numeric(data$survival_time)
+summary(data$survival_time)
+
+## 7) Replace missing IPF times with time to death (if available)
+##    or time to end of follow-up (2023-07-01) otherwise
+data$incident_IPF_time_new <- ifelse(
+  is.na(data$incident_IPF_time_new), 
+  ifelse(
+    is.na(data$survival_time), 
+    as.numeric(ymd("2023-07-01") - ymd(data$p53_i0)), 
+    data$survival_time
+  ), 
+  data$incident_IPF_time_new
+)
+
+summary(data$incident_IPF_time_new / 365)
+
+
+############################################
+## COPD time: for each participant, take the earliest
+## hospital admission date with ICD-10 J44
+############################################
+
+library(lubridate)
+
+## Mapping function: ICD-10 code columns (41270_*) -> date columns (41280_a*)
+yuyu <- function(y){
+  gsub("41270_", "41280_a", y)
+}
+
+## 1) Create a raw event-date variable (character) to store original 41280 values
+data$incident_COPD_date_new_raw <- rep(NA_character_, nrow(data))
+
+## 2) Loop over all 41270_* code columns
+for (x in ls(data, pattern = "41270_")) {
+  
+  date_col <- yuyu(x)
+  if (!date_col %in% names(data)) next  # skip if there is no corresponding 41280_a column
+  
+  ## ICD-10 codes and corresponding dates in this column
+  code_vec <- data[[x]]
+  date_vec <- data[[date_col]]
+  
+  ## Participants with incident COPD, a J44 code, and a non-missing date in this column
+  idx <- which(
+    data$incident_COPD == 1 &
+      !is.na(code_vec) &
+      grepl("J44", code_vec) &
+      !is.na(date_vec)
+  )
+  
+  for (i in idx) {
+    ## Extract the date for this participant (store as character; compare as Date)
+    new_raw  <- as.character(date_vec[i])
+    new_date <- ymd(new_raw)
+    if (is.na(new_date)) next
+    
+    if (is.na(data$incident_COPD_date_new_raw[i])) {
+      ## First candidate date for this participant
+      data$incident_COPD_date_new_raw[i] <- new_raw
+    } else {
+      ## Compare with the existing candidate date and keep the earliest one
+      old_date <- ymd(data$incident_COPD_date_new_raw[i])
+      if (is.na(old_date) || new_date < old_date) {
+        data$incident_COPD_date_new_raw[i] <- new_raw
+      }
+    }
+  }
+}
+
+## 3) Convert raw character dates to Date
+data$incident_COPD_date_new <- ymd(data$incident_COPD_date_new_raw)
+
+## 4) Baseline date (field 53) as Date
+data$p53_i0_date <- ymd(data$p53_i0)
+
+## 5) Time from baseline to COPD event (days)
+data$incident_COPD_time_new <- as.numeric(
+  data$incident_COPD_date_new - data$p53_i0_date
+)
+
+## 6) Survival time to death (field 40000)
+data$survival_time <- ymd(data$p40000_i0) - ymd(data$p53_i0)
+data$survival_time <- as.numeric(data$survival_time)
+summary(data$survival_time)
+
+## 7) Replace missing COPD times with time to death (if available)
+##    or time to end of follow-up (2023-07-01) otherwise
+data$incident_COPD_time_new <- ifelse(
+  is.na(data$incident_COPD_time_new), 
+  ifelse(
+    is.na(data$survival_time), 
+    as.numeric(ymd("2023-07-01") - ymd(data$p53_i0)), 
+    data$survival_time
+  ), 
+  data$incident_COPD_time_new
+)
+
+summary(data$incident_COPD_time_new / 365)
+
+
+############################################
+## Asthma time: for each participant, take the earliest
+## hospital admission date with ICD-10 J45
+############################################
+
+library(lubridate)
+
+## Mapping function: ICD-10 code columns (41270_*) -> date columns (41280_a*)
+yuyu <- function(y){
+  gsub("41270_","41280_a", y)
+}
+
+## 1) Create a raw event-date variable (character) to store original 41280 values
+data$incident_asthma_date_new_raw <- rep(NA_character_, nrow(data))
+
+## 2) Loop over all 41270_* code columns
+for (x in ls(data, pattern = "41270_")) {
+  
+  date_col <- yuyu(x)
+  if (!date_col %in% names(data)) next  # skip if there is no corresponding 41280_a column
+  
+  ## ICD-10 codes and corresponding dates in this column
+  code_vec <- data[[x]]
+  date_vec <- data[[date_col]]
+  
+  ## Participants with incident asthma, a J45 code, and a non-missing date in this column
+  idx <- which(
+    data$incident_asthma == 1 &
+      !is.na(code_vec) &
+      grepl("J45", code_vec) &
+      !is.na(date_vec)
+  )
+  
+  for (i in idx) {
+    ## Extract the date for this participant (store as character; compare as Date)
+    new_raw  <- as.character(date_vec[i])
+    new_date <- ymd(new_raw)
+    if (is.na(new_date)) next
+    
+    if (is.na(data$incident_asthma_date_new_raw[i])) {
+      ## First candidate date for this participant
+      data$incident_asthma_date_new_raw[i] <- new_raw
+    } else {
+      ## Compare with the existing candidate date and keep the earliest one
+      old_date <- ymd(data$incident_asthma_date_new_raw[i])
+      if (is.na(old_date) || new_date < old_date) {
+        data$incident_asthma_date_new_raw[i] <- new_raw
+      }
+    }
+  }
+}
+
+## 3) Convert raw character dates to Date
+data$incident_asthma_date_new <- ymd(data$incident_asthma_date_new_raw)
+
+## 4) Baseline date (field 53) as Date
+data$p53_i0_date <- ymd(data$p53_i0)
+
+## 5) Time from baseline to asthma event (days)
+data$incident_asthma_time_new <- as.numeric(
+  data$incident_asthma_date_new - data$p53_i0_date
+)
+
+## 6) Survival time to death (field 40000)
+data$survival_time <- ymd(data$p40000_i0) - ymd(data$p53_i0)
+data$survival_time <- as.numeric(data$survival_time)
+summary(data$survival_time)
+
+## 7) Replace missing asthma times with time to death (if available)
+##    or time to end of follow-up (2023-07-01) otherwise
+data$incident_asthma_time_new <- ifelse(
+  is.na(data$incident_asthma_time_new), 
+  ifelse(
+    is.na(data$survival_time), 
+    as.numeric(ymd("2023-07-01") - ymd(data$p53_i0)), 
+    data$survival_time
+  ), 
+  data$incident_asthma_time_new
+)
+
+summary(data$incident_asthma_time_new / 365)
